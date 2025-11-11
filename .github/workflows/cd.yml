@@ -9,14 +9,50 @@ permissions:
   packages: write
 
 jobs:
-  build-and-push:
+  analyze-build-and-push:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          registry: ghcr.io
-          username: \${{ github.actor }}
-          password: \${{ secrets.GITHUB_TOKEN }}
-      - run: docker build -t ghcr.io/\${{ github.repository_owner }}/finance-demo-api:latest .
-      - run: docker push ghcr.io/\${{ github.repository_owner }}/finance-demo-api:latest
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run unit tests with coverage
+        run: npm test -- --coverage
+        env:
+          NODE_ENV: test
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ secrets.SONAR_ORG }}
+
+      # build & push only if analysis succeeded
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+            registry: ghcr.io
+            username: ${{ github.actor }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/finance-demo-api:latest .
+
+      - name: Push image
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/finance-demo-api:latest
