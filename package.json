@@ -1,0 +1,25 @@
+{
+  "name": "finance-api",
+  "version": "1.0.0",
+  "description": "Sample Finance API for demonstrating GitHub CI/CD with SonarQube and automated testing",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "test": "jest --coverage"
+  },
+  "keywords": [
+    "finance",
+    "api",
+    "express",
+    "ci-cd",
+    "sonarqube",
+    "demo"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "express": "^5.1.0",
+    "jest": "^29.7.0",
+    "supertest": "^7.1.4"
+  }
+}
