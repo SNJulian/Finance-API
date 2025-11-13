@@ -1,2 +1,2 @@
 # Finance-API
-NodeJS App based on express with rest API, sonar integration, tests and release
+NodeJS App based on express with rest API, sonar integration, tests and release /CI
