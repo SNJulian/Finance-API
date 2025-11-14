@@ -1,6 +1,6 @@
 {
   "name": "finance-api",
-  "version": "1.0.0",
+  "version": "0.0.2",
   "description": "Sample Finance API for demonstrating GitHub CI/CD with SonarQube and automated testing",
   "main": "src/app.js",
   "scripts": {
