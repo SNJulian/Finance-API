@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ "develop" ]
+    branches:
+      - "develop"
+      - "release/*"
   # pull_request:
   #   branches: [ "main", "develop" ]
 
@@ -13,7 +15,7 @@ jobs:
     outputs:
       semver: ${{ steps.version.outputs.semver }}
       dev_version: ${{ steps.version.outputs.dev_version }}
-    steps:   
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -29,25 +31,35 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Extract versions
+      - name: Extract versions (dev / RC)
         id: version
         run: |
           SEMVER=$(node -p "require('./package.json').version")
           BUILD=${GITHUB_RUN_NUMBER}
-          DEV_VERSION="${SEMVER}-dev.${BUILD}"
+          BRANCH="${GITHUB_REF_NAME}"
+
+          # Default: develop/pre-release build → semantic-dev.<build>
+          ARTIFACT_VERSION="${SEMVER}-dev.${BUILD}"
+
+          # If this is a release branch (release/v0.9.0), use RC format: 0.9.0-rc.<build>
+          if [[ "$BRANCH" == release/* ]]; then
+            BASE="${BRANCH#release/}"  # strip 'release/'
+            BASE="${BASE#v}"           # strip leading 'v' if present
+            ARTIFACT_VERSION="${BASE}-rc.${BUILD}"
+          fi
 
           echo "semver=${SEMVER}" >> $GITHUB_OUTPUT
-          echo "dev_version=${DEV_VERSION}" >> $GITHUB_OUTPUT
+          echo "dev_version=${ARTIFACT_VERSION}" >> $GITHUB_OUTPUT
 
-          echo "Semantic Version: $SEMVER"
-          echo "Dev Version: $DEV_VERSION"
+          echo "Base Semantic Version: $SEMVER"
+          echo "Artifact Version (dev/rc): $ARTIFACT_VERSION"
 
 
   test:
     runs-on: ubuntu-latest
     name: 'Test'
     needs: build
-    steps:   
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -71,6 +83,7 @@ jobs:
           job-name: 'Test'
           xml-report-filename: reports/junit/jest-results.xml
           test-summary-name: 'TestSummary'
+
 
   sbom:
     runs-on: ubuntu-latest
@@ -110,20 +123,45 @@ jobs:
             echo "SBOM file sbom/sbom.json not found"
             exit 1
           fi
-  
-          # TODO: replace endpoint with your actual SBOM API URL
-          curl -v \
+
+          # Build the URL (replace IDs with your real values as needed)
+          URL="${SN_INSTANCE_URL%/}/api/sbom/core/upload"
+          URL="${URL}?businessApplicationId=39c42f0483553a10b63977cfeeaad365"
+          URL="${URL}&buildId=${DEV_VERSION}"
+          URL="${URL}&productModelId=08833e48c3d5b610c01f1613e40131a4"
+          URL="${URL}&requestedBy=devops"
+          URL="${URL}&lifecycleStage=pre_production"
+          URL="${URL}&fetchVulnerabilityInfo=true"
+          URL="${URL}&fetchPackageInfo=true"
+
+          echo "Calling SBOM API: $URL"
+
+          # Call API, capture HTTP status and response body
+          HTTP_CODE=$(curl -s -o sbom/response.json -w "%{http_code}" \
             -u "$SN_SBOM_USER:$SN_SBOM_PASSWORD" \
             -H "Content-Type: application/json" \
             -X POST \
-            "$SN_INSTANCE_URL/api/sbom/core/upload?businessApplicationId=39c42f0483553a10b63977cfeeaad365&buildId=12312312321&productModelId=08833e48c3d5b610c01f1613e40131a4&requestedBy=devops&lifecycleStage=pre_production&fetchVulnerabilityInfo=true&fetchPackageInfo=true" \
-            --data-binary "@sbom/sbom.json"
+            "$URL" \
+            --data-binary "@sbom/sbom.json")
+
+          echo "SBOM upload HTTP status: $HTTP_CODE"
+          echo "SBOM upload response body:"
+          cat sbom/response.json || true
+
+          # Expect HTTP 200 (= queued/accepted) – fail otherwise
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "ERROR: SBOM upload failed or was not queued successfully (HTTP $HTTP_CODE). Aborting pipeline."
+            exit 1
+          fi
+
+          echo "SBOM upload successfully queued for processing."
+
 
   analyze:
     runs-on: ubuntu-latest
     name: 'SonarQube Analysis'
     needs: [build, sbom]
-    steps:   
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -158,11 +196,12 @@ jobs:
         with:
           command: qualitygate
 
+
   registerArtifact:
     runs-on: ubuntu-latest
     name: 'Register Artifact'
     needs: [build, analyze]
-    steps:   
+    steps:
       - name: ServiceNow DevOps Register Artifact
         uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
         env:
