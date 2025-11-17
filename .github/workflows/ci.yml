@@ -60,7 +60,7 @@ jobs:
 
   analyze:
     runs-on: ubuntu-latest
-    name: 'SonarQube Analyse'
+    name: 'SonarQube Analysis'
     needs: test
     steps:   
       - name: Checkout
@@ -86,7 +86,7 @@ jobs:
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
-          job-name: 'Build'
+          job-name: 'SonarQube Analysis'
           sonar-host-url: ${{ secrets.SONAR_URL }}
           sonar-project-key: ${{ secrets.SONAR_PROJECT_KEY }}
 
