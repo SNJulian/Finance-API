@@ -225,7 +225,7 @@ jobs:
       - name: ServiceNow DevOps Register Package
         uses: ServiceNow/servicenow-devops-register-package@v5.1.0
         env:
-          ARTIFACT_VERSION: ${{ needs.registerArtifactPackage.outputs.artifact_version }}
+          ARTIFACT_VERSION: ${{ needs.build.outputs.artifact_version }}
         with:
           devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
