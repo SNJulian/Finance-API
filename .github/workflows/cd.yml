@@ -201,9 +201,9 @@ jobs:
           command: qualitygate
 
 
-  registerArtifact:
+  registerArtifactPackage:
     runs-on: ubuntu-latest
-    name: "Register Artifact"
+    name: "Register Artifact and Package"
     needs: [build, analyze]
     steps:
       - name: ServiceNow DevOps Register Artifact
@@ -222,38 +222,32 @@ jobs:
               "semanticVersion":"${{ env.ARTIFACT_VERSION }}",
               "repositoryName":"${{ github.repository }}"}]
 
-
-  registerPackage:
-    runs-on: ubuntu-latest
-    name: "Register Package"
-    needs: registerArtifact
-    steps:
       - name: ServiceNow DevOps Register Package
         uses: ServiceNow/servicenow-devops-register-package@v5.1.0
         env:
-          ARTIFACT_VERSION: ${{ needs.registerArtifact.outputs.artifact_version }}
+          ARTIFACT_VERSION: ${{ needs.registerArtifactPackage.outputs.artifact_version }}
         with:
           devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
-          job-name: "Register Package"
+          job-name: "Register Artifact and Package"
           artifacts: >-
             [{"name":"com:finance-api",
-              "version":"${{ needs.build.outputs.artifact_version }}",
-              "semanticVersion":"${{ needs.build.outputs.artifact_version }}",
+              "version":"${{ env.ARTIFACT_VERSION }}",
+              "semanticVersion":"${{ env.ARTIFACT_VERSION }}",
               "repositoryName":"${{ github.repository }}"}]
-          package-name: "finance-api-${{ needs.build.outputs.artifact_version }}.pkg"
+          package-name: "finance-api-${{ env.ARTIFACT_VERSION }}.pkg"
 
 
   changeAndDeploy:
     runs-on: ubuntu-latest
     name: "Create Change & Deployment"
-    needs: registerPackage
+    needs: registerArtifactPackage
     steps:
       - name: Create Change in ServiceNow
         id: create_change
-        uses: ServiceNow/servicenow-devops-change@v4.1.0
+        uses: ServiceNow/servicenow-devops-change@v6.1.0
         with:
           devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
@@ -266,7 +260,7 @@ jobs:
           assignment-group: "DevOps"
           configuration-item: ${{ needs.build.outputs.app_service }}
 
-      - name: Simulate Deployment
+      - name: Deployment
         env:
           ARTIFACT_VERSION: ${{ needs.build.outputs.artifact_version }}
           APP_SERVICE: ${{ needs.build.outputs.app_service }}
