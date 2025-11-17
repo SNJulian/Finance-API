@@ -1,5 +1,5 @@
 {
-  "name": "finance-demo-api",
+  "name": "finance-api",
   "version": "0.3.0",
   "description": "Sample Finance API for demonstrating GitHub CI/CD, SonarCloud analysis, and SBOM generation.",
   "main": "src/app.js",
