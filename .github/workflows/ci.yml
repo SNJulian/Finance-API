@@ -3,8 +3,8 @@ name: CI
 on:
   push:
     branches: [ "develop" ]
-#  pull_request:
-#    branches: [ "main", "develop" ]
+  # pull_request:
+  #   branches: [ "main", "develop" ]
 
 jobs:
   build:
@@ -13,7 +13,7 @@ jobs:
     outputs:
       semver: ${{ steps.version.outputs.semver }}
       dev_version: ${{ steps.version.outputs.dev_version }}
-    steps:   
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -42,28 +42,21 @@ jobs:
           echo "Semantic Version: $SEMVER"
           echo "Dev Version: $DEV_VERSION"
 
-      - name: Generate SBOM (CycloneDX)
-        run: |
-          npm install -g @cyclonedx/cyclonedx-npm
-          mkdir -p sbom
-          cyclonedx-npm --output-file sbom/sbom.json --output-format json
-
-
 
   test:
     runs-on: ubuntu-latest
     name: 'Test'
     needs: build
-    steps:   
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           # SonarCloud likes full history for PR decoration, coverage, etc.
           fetch-depth: 0
-  
+
       - name: Install dependencies
         run: npm install
-          
+
       - name: Run unit tests with coverage
         run: npm test -- --coverage
         env:
@@ -85,13 +78,13 @@ jobs:
     runs-on: ubuntu-latest
     name: 'SonarQube Analysis'
     needs: test
-    steps:   
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           # SonarCloud likes full history for PR decoration, coverage, etc.
           fetch-depth: 0
-          
+
       # SonarCloud analysis
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
@@ -101,7 +94,7 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ secrets.SONAR_ORG }}
-      
+
       - name: ServiceNow DevOps Sonar Scan Results
         uses: ServiceNow/servicenow-devops-sonar@v5.1.0
         with:
@@ -121,16 +114,14 @@ jobs:
         with:
           command: qualitygate
 
+
   sbom-upload:
     runs-on: ubuntu-latest
     name: 'Upload SBOM to ServiceNow'
     needs: [build, test, analyze]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Upload SBOM to ServiceNow
+      - name: Upload SBOM to ServiceNow (Dependency Graph)
         id: upload-sbom
         uses: ServiceNow/vulnerability-response@v1.0.0
         with:
@@ -139,38 +130,39 @@ jobs:
           snSbomPassword: ${{ secrets.SN_SBOM_PASSWORD }}
           snInstanceUrl: ${{ secrets.SN_INSTANCE_URL }}
 
-          # GitHub token with repo scope
+          # GitHub token with repo + dependency graph access
           ghToken: ${{ secrets.GH_TOKEN }}
 
-          # Where the SBOM lives in the repo
+          # Identify the repo for dependency graph
           ghAccountOwner: ${{ github.repository_owner }}
-          repository: ${{ github.repository }}
-          provider: "repository"
-          path: "sbom/sbom.json"           # adjust if your SBOM path is different
+          repository: ${{ github.event.repository.name }}   # e.g. "Finance-API"
 
-          # Optional API parameters / metadata
+          # Use GitHub dependency graph as SBOM source
+          provider: "dependencyGraph"
+          ref: ${{ github.ref_name }}
+
+          # Optional metadata
           buildId: ${{ needs.build.outputs.dev_version }}
           lifecycleStage: "pre_production"
           requestedBy: true
           fetchVulnerabilityInfo: true
           fetchPackageInfo: true
-          sbomSource: "github-actions-ci"
+          sbomSource: "github-dependency-graph"
           maxStatusPollAttempts: "5"
-          statusAttemptInterval: "10000"   # must be >= 5000 ms
+          statusAttemptInterval: "10000"
 
-          
+
   registerArtifact:
     runs-on: ubuntu-latest
     name: 'Register Artifact'
     needs: [build, analyze, sbom-upload]
-    steps:   
-    - name: ServiceNow DevOps Register Artifact
-    # You may pin to the exact commit or the version.          
-      uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
-      env:
+    steps:
+      - name: ServiceNow DevOps Register Artifact
+        uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
+        env:
           SEMVER: ${{ needs.build.outputs.semver }}
           DEV_VERSION: ${{ needs.build.outputs.dev_version }}
-      with:
+        with:
           # Devops Integration Token
           devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           # ServiceNow Instance URL
@@ -182,5 +174,8 @@ jobs:
           # Github Context
           context-github: ${{ toJSON(github) }}
           # List of Artifacts to be registered
-          artifacts: '[{"name": "com:finance-api","version": "${{ env.DEV_VERSION }}","semanticVersion": "${{ env.DEV_VERSION }}","repositoryName": "${{ github.repository }}"}]'
-
+          artifacts: >-
+            [{"name":"com:finance-api",
+              "version":"${{ env.DEV_VERSION }}",
+              "semanticVersion":"${{ env.DEV_VERSION }}",
+              "repositoryName":"${{ github.repository }}"}]
