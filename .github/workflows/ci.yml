@@ -26,23 +26,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Get app version (with build number)
-        id: get_version
+      - name: Extract versions
+        id: version
         run: |
-          BASE_VERSION=$(node -p "require('./package.json').version")
-          BUILD_NUMBER=${GITHUB_RUN_NUMBER}
+          SEMVER=$(node -p "require('./package.json').version")
+          BUILD=${GITHUB_RUN_NUMBER}
+          DEV_VERSION="${SEMVER}-dev.${BUILD}"
 
-          if [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
-            # develop branch = prerelease version
-            VERSION="${BASE_VERSION}-dev.${BUILD_NUMBER}"
-          else
-            # main or other branches = use plain version
-            VERSION="${BASE_VERSION}"
-          fi
+          echo "semver=${SEMVER}" >> $GITHUB_OUTPUT
+          echo "dev_version=${DEV_VERSION}" >> $GITHUB_OUTPUT
 
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Base version: $BASE_VERSION"
-          echo "Computed version: $VERSION"
+          echo "Semantic Version: $SEMVER"
+          echo "Dev Version: $DEV_VERSION"
+
 
   test:
     runs-on: ubuntu-latest
@@ -135,4 +131,4 @@ jobs:
           # Github Context
           context-github: ${{ toJSON(github) }}
           # List of Artifacts to be registered
-          artifacts: '[{"name": "com:finance-api","version": "${{ steps.get_version.outputs.version }}","semanticVersion": "${{ steps.get_version.outputs.version }}","repositoryName": "${{ github.repository }}"}]'
+          artifacts: '[{"name": "com:finance-api","version": "${{ steps.version.outputs.dev_version }}","semanticVersion": "${{ steps.version.outputs.semver }}","repositoryName": "${{ github.repository }}"}]'
