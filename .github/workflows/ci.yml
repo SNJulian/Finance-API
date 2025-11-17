@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: [ "develop" ]
 #  pull_request:
 #    branches: [ "main", "develop" ]
 
@@ -26,6 +26,23 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Get app version (with build number)
+        id: get_version
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          BUILD_NUMBER=${GITHUB_RUN_NUMBER}
+
+          if [[ "${GITHUB_REF_NAME}" == "develop" ]]; then
+            # develop branch = prerelease version
+            VERSION="${BASE_VERSION}-dev.${BUILD_NUMBER}"
+          else
+            # main or other branches = use plain version
+            VERSION="${BASE_VERSION}"
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Base version: $BASE_VERSION"
+          echo "Computed version: $VERSION"
 
   test:
     runs-on: ubuntu-latest
@@ -118,4 +135,4 @@ jobs:
           # Github Context
           context-github: ${{ toJSON(github) }}
           # List of Artifacts to be registered
-          artifacts: '[{"name": "com:finance-api","version": "1.${{ github.run_number }}","semanticVersion": "1.${{ github.run_number }}.0","repositoryName": "${{ github.repository }}"}]'
+          artifacts: '[{"name": "com:finance-api","version": "${{ steps.get_version.outputs.version }}","semanticVersion": "${{ steps.get_version.outputs.version }}","repositoryName": "${{ github.repository }}"}]'
