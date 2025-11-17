@@ -298,6 +298,7 @@ jobs:
               "semanticVersion":"${{ env.ARTIFACT_VERSION }}",
               "repositoryName":"${{ github.repository }}"}]
           package-name: "finance-api-${{ env.ARTIFACT_VERSION }}.pkg"
+          
   changeAndDeploySubProd:
     runs-on: ubuntu-latest
     name: "Create Change & Deployment (Sub-Production)"
@@ -318,7 +319,8 @@ jobs:
               "autoCloseChange":true,
               "attributes":{
                 "short_description":"Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Sub-Production",
-                "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Sub-Production"
+                "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Sub-Production",
+                "software_model":{"name": "${{ needs.build.outputs.semver }}"}
              }}
           interval: '100'
           timeout: '3600'
@@ -357,7 +359,8 @@ jobs:
             {"setCloseCode":"true","autoCloseChange":true,
              "attributes":{
                "short_description":"Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Production",
-               "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Production"
+               "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Production",
+               "software_model":{"name": "${{ needs.build.outputs.semver }}"}
              }}
           interval: '100'
           timeout: '3600'
