@@ -10,6 +10,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     name: 'NPM Build'
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
+      dev_version: ${{ steps.version.outputs.dev_version }}
     steps:   
       - name: Checkout
         uses: actions/checkout@v4
@@ -119,6 +122,9 @@ jobs:
     - name: ServiceNow DevOps Register Artifact
     # You may pin to the exact commit or the version.          
       uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
+      env:
+          SEMVER: ${{ needs.build.outputs.semver }}
+          DEV_VERSION: ${{ needs.build.outputs.dev_version }}
       with:
           # Devops Integration Token
           devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
@@ -131,7 +137,5 @@ jobs:
           # Github Context
           context-github: ${{ toJSON(github) }}
           # List of Artifacts to be registered
-          artifacts: '[{"name": "com:finance-api","version": "$DEV_VERSION","semanticVersion": "$DEV_VERSION","repositoryName": "${{ github.repository }}"}]'
-      env:
-          SEMVER: ${{ needs.build.outputs.semver }}
-          DEV_VERSION: ${{ needs.build.outputs.dev_version }}
+          artifacts: '[{"name": "com:finance-api","version": "${{ env.DEV_VERSION }}","semanticVersion": "${{ env.DEV_VERSION }}","repositoryName": "${{ github.repository }}"}]'
+
