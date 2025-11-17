@@ -13,7 +13,7 @@ jobs:
     outputs:
       semver: ${{ steps.version.outputs.semver }}
       dev_version: ${{ steps.version.outputs.dev_version }}
-    steps:
+    steps:   
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -47,16 +47,15 @@ jobs:
     runs-on: ubuntu-latest
     name: 'Test'
     needs: build
-    steps:
+    steps:   
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # SonarCloud likes full history for PR decoration, coverage, etc.
           fetch-depth: 0
-
+  
       - name: Install dependencies
         run: npm install
-
+          
       - name: Run unit tests with coverage
         run: npm test -- --coverage
         env:
@@ -74,55 +73,65 @@ jobs:
           test-summary-name: 'TestSummary'
 
 
-  sbom-upload:
+  sbom:
     runs-on: ubuntu-latest
-    name: 'Upload SBOM to ServiceNow'
-    needs: [test]
+    name: 'Upload SBOM to ServiceNow via REST API'
+    needs: [build, test]
 
-    steps:
-      - name: Upload SBOM to ServiceNow (Dependency Graph)
-        id: upload-sbom
-        uses: ServiceNow/vulnerability-response@v1.0.0
-        with:
-          # ServiceNow instance + creds
-          snSbomUser: ${{ secrets.SN_SBOM_USER }}
-          snSbomPassword: ${{ secrets.SN_SBOM_PASSWORD }}
-          snInstanceUrl: ${{ secrets.SN_INSTANCE_URL }}
-
-          # GitHub token with repo + dependency graph access
-          ghToken: ${{ secrets.GH_TOKEN }}
-
-          # Identify the repo for dependency graph
-          ghAccountOwner: ${{ github.repository_owner }}
-          repository: ${{ github.event.repository.name }}   # e.g. "Finance-API"
-
-          # Use GitHub dependency graph as SBOM source
-          provider: "dependencyGraph"
-          ref: ${{ github.ref_name }}
-
-          # Optional metadata
-          buildId: ${{ needs.build.outputs.dev_version }}
-          lifecycleStage: "pre_production"
-          requestedBy: true
-          fetchVulnerabilityInfo: true
-          fetchPackageInfo: true
-          sbomSource: "github-dependency-graph"
-          maxStatusPollAttempts: "5"
-          statusAttemptInterval: "10000"
-
-
-
-  analyze:
-    runs-on: ubuntu-latest
-    name: 'SonarQube Analysis'
-    needs: [sbom-upload]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # SonarCloud likes full history for PR decoration, coverage, etc.
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          npm install -g @cyclonedx/cyclonedx-npm
+          mkdir -p sbom
+          cyclonedx-npm --output-file sbom/sbom.json --output-format json
+
+      - name: Upload SBOM to ServiceNow via REST
+        env:
+          SN_INSTANCE_URL: ${{ secrets.SN_INSTANCE_URL }}
+          SN_SBOM_USER: ${{ secrets.SN_SBOM_USER }}
+          SN_SBOM_PASSWORD: ${{ secrets.SN_SBOM_PASSWORD }}
+          DEV_VERSION: ${{ needs.build.outputs.dev_version }}
+        run: |
+          echo "Uploading SBOM to ServiceNow..."
+          if [ ! -f sbom/sbom.json ]; then
+            echo "SBOM file sbom/sbom.json not found"
+            exit 1
+          fi
+
+          # NOTE:
+          # Replace `/api/now/...` below with the exact SBOM upload endpoint
+          # from your Zurich documentation (e.g. something like
+          # /api/sn_sbom/sbom/upload or whatever your docs specify).
+          #
+          # Also adjust query params / JSON envelope as required by the API.
+
+          curl -v \
+            -u "$SN_SBOM_USER:$SN_SBOM_PASSWORD" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            "$SN_INSTANCE_URL/api/now/sn_sbom/sbom/upload?lifecycle_stage=pre_production&build_id=$DEV_VERSION&source=github-actions-ci" \
+            --data-binary "@sbom/sbom.json"
+
+  analyze:
+    runs-on: ubuntu-latest
+    name: 'SonarQube Analysis'
+    needs: [build, sbom]
+    steps:   
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
       # SonarCloud analysis
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
@@ -132,7 +141,7 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ secrets.SONAR_ORG }}
-
+      
       - name: ServiceNow DevOps Sonar Scan Results
         uses: ServiceNow/servicenow-devops-sonar@v5.1.0
         with:
@@ -155,8 +164,8 @@ jobs:
   registerArtifact:
     runs-on: ubuntu-latest
     name: 'Register Artifact'
-    needs: [build, analyze, sbom-upload]
-    steps:
+    needs: [build, analyze]
+    steps:   
       - name: ServiceNow DevOps Register Artifact
         uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
         env:
