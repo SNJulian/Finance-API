@@ -116,7 +116,7 @@ jobs:
             -u "$SN_SBOM_USER:$SN_SBOM_PASSWORD" \
             -H "Content-Type: application/json" \
             -X POST \
-            "$SN_INSTANCE_URL/api/sbom/core/upload?businessApplicationId=39c42f0483553a10b63977cfeeaad365&businessApplicationName=Finance%20API&buildId=12312312321&productModelId=08833e48c3d5b610c01f1613e40131a4&requestedBy=devops&lifecycleStage=release&fetchVulnerabilityInfo=true&fetchPackageInfo=true" \
+            "$SN_INSTANCE_URL/api/sbom/core/upload?businessApplicationId=39c42f0483553a10b63977cfeeaad365&buildId=12312312321&productModelId=08833e48c3d5b610c01f1613e40131a4&requestedBy=devops&lifecycleStage=pre-production&fetchVulnerabilityInfo=true&fetchPackageInfo=true" \
             --data-binary "@sbom/sbom.json"
 
   analyze:
