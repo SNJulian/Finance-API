@@ -137,7 +137,6 @@ jobs:
           URL="${SN_INSTANCE_URL%/}/api/sbom/core/upload"
           URL="${URL}?businessApplicationId=39c42f0483553a10b63977cfeeaad365"
           URL="${URL}&buildId=${ARTIFACT_VERSION}"
-          URL="${URL}&productModelId=08833e48c3d5b610c01f1613e40131a4"
           URL="${URL}&requestedBy=devops"
           URL="${URL}&lifecycleStage=${LIFECYCLE_STAGE}"
           URL="${URL}&fetchVulnerabilityInfo=true"
