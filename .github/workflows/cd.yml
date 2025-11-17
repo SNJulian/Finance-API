@@ -314,14 +314,15 @@ jobs:
           context-github: ${{ toJSON(github) }}
           job-name: "Create Change & Deployment (Sub-Production)"
           change-request: >-
-            {"setCloseCode":"true","autoCloseChange":true,
-             "attributes":{
-               "short_description":"Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Sub-Production",
-               "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Sub-Production"
+            {"setCloseCode":"true",
+              "autoCloseChange":true,
+              "attributes":{
+                "short_description":"Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Sub-Production",
+                "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Sub-Production"
              }}
           interval: '100'
           timeout: '3600'
-          changeCreationTimeOut: '3600'
+          changeCreationTimeOut: '7200'
           abortOnChangeCreationFailure: true
           abortOnChangeStepTimeout: true
 
