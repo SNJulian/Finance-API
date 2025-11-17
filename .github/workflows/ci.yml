@@ -2,15 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [ "main", "develop" ]
-#  pull_request:
-#    branches: [ "main", "develop" ]
+    branches:
+      - "develop"
+      - "release/*"
+  # pull_request:
+  #   branches: [ "main", "develop" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     name: 'NPM Build'
-    steps:   
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
+      dev_version: ${{ steps.version.outputs.dev_version }}
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -26,20 +31,42 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Extract versions (dev / RC)
+        id: version
+        run: |
+          SEMVER=$(node -p "require('./package.json').version")
+          BUILD=${GITHUB_RUN_NUMBER}
+          BRANCH="${GITHUB_REF_NAME}"
+
+          # Default: develop/pre-release build → semantic-dev.<build>
+          ARTIFACT_VERSION="${SEMVER}-dev.${BUILD}"
+
+          # If this is a release branch (release/v0.9.0), use RC format: 0.9.0-rc.<build>
+          if [[ "$BRANCH" == release/* ]]; then
+            BASE="${BRANCH#release/}"  # strip 'release/'
+            BASE="${BASE#v}"           # strip leading 'v' if present
+            ARTIFACT_VERSION="${BASE}-rc.${BUILD}"
+          fi
+
+          echo "semver=${SEMVER}" >> $GITHUB_OUTPUT
+          echo "dev_version=${ARTIFACT_VERSION}" >> $GITHUB_OUTPUT
+
+          echo "Base Semantic Version: $SEMVER"
+          echo "Artifact Version (dev/rc): $ARTIFACT_VERSION"
+
 
   test:
     runs-on: ubuntu-latest
     name: 'Test'
     needs: build
-    steps:   
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # SonarCloud likes full history for PR decoration, coverage, etc.
           fetch-depth: 0
   
       - name: Install dependencies
-        run: npm install --save-dev jest-junit
+        run: npm install
           
       - name: Run unit tests with coverage
         run: npm test -- --coverage
@@ -58,15 +85,86 @@ jobs:
           test-summary-name: 'TestSummary'
 
 
-  analyze:
+  sbom:
     runs-on: ubuntu-latest
-    name: 'SonarQube Analysis'
-    needs: test
-    steps:   
+    name: 'Upload SBOM to ServiceNow via REST API'
+    needs: [build, test]
+
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # SonarCloud likes full history for PR decoration, coverage, etc.
+          fetch-depth: 0
+  
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+  
+      - name: Install dependencies
+        run: npm install
+  
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          npm install -g @cyclonedx/cyclonedx-npm
+          mkdir -p sbom
+          cyclonedx-npm --output-file sbom/sbom.json --output-format json
+  
+      - name: Upload SBOM to ServiceNow via REST
+        env:
+          SN_INSTANCE_URL: ${{ secrets.SN_INSTANCE_URL }}
+          SN_SBOM_USER: ${{ secrets.SN_SBOM_USER }}
+          SN_SBOM_PASSWORD: ${{ secrets.SN_SBOM_PASSWORD }}
+          DEV_VERSION: ${{ needs.build.outputs.dev_version }}
+        run: |
+          echo "Uploading SBOM to ServiceNow..."
+          if [ ! -f sbom/sbom.json ]; then
+            echo "SBOM file sbom/sbom.json not found"
+            exit 1
+          fi
+
+          # Build the URL (replace IDs with your real values as needed)
+          URL="${SN_INSTANCE_URL%/}/api/sbom/core/upload"
+          URL="${URL}?businessApplicationId=39c42f0483553a10b63977cfeeaad365"
+          URL="${URL}&buildId=${DEV_VERSION}"
+          URL="${URL}&productModelId=08833e48c3d5b610c01f1613e40131a4"
+          URL="${URL}&requestedBy=devops"
+          URL="${URL}&lifecycleStage=pre_production"
+          URL="${URL}&fetchVulnerabilityInfo=true"
+          URL="${URL}&fetchPackageInfo=true"
+
+          echo "Calling SBOM API: $URL"
+
+          # Call API, capture HTTP status and response body
+          HTTP_CODE=$(curl -s -o sbom/response.json -w "%{http_code}" \
+            -u "$SN_SBOM_USER:$SN_SBOM_PASSWORD" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            "$URL" \
+            --data-binary "@sbom/sbom.json")
+
+          echo "SBOM upload HTTP status: $HTTP_CODE"
+          echo "SBOM upload response body:"
+          cat sbom/response.json || true
+
+          # Expect HTTP 200 (= queued/accepted) – fail otherwise
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "ERROR: SBOM upload failed or was not queued successfully (HTTP $HTTP_CODE). Aborting pipeline."
+            exit 1
+          fi
+
+          echo "SBOM upload successfully queued for processing."
+
+
+  analyze:
+    runs-on: ubuntu-latest
+    name: 'SonarQube Analysis'
+    needs: [build, sbom]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
           fetch-depth: 0
           
       # SonarCloud analysis
@@ -97,16 +195,19 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           command: qualitygate
-          
+
+
   registerArtifact:
     runs-on: ubuntu-latest
     name: 'Register Artifact'
-    needs: analyze
-    steps:   
-    - name: ServiceNow DevOps Register Artifact
-    # You may pin to the exact commit or the version.          
-      uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
-      with:
+    needs: [build, analyze]
+    steps:
+      - name: ServiceNow DevOps Register Artifact
+        uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
+        env:
+          SEMVER: ${{ needs.build.outputs.semver }}
+          DEV_VERSION: ${{ needs.build.outputs.dev_version }}
+        with:
           # Devops Integration Token
           devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           # ServiceNow Instance URL
@@ -118,4 +219,8 @@ jobs:
           # Github Context
           context-github: ${{ toJSON(github) }}
           # List of Artifacts to be registered
-          artifacts: '[{"name": "com:finance-api","version": "1.${{ github.run_number }}","semanticVersion": "1.${{ github.run_number }}.0","repositoryName": "${{ github.repository }}"}]'
+          artifacts: >-
+            [{"name":"com:finance-api",
+              "version":"${{ env.DEV_VERSION }}",
+              "semanticVersion":"${{ env.DEV_VERSION }}",
+              "repositoryName":"${{ github.repository }}"}]
