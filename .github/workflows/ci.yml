@@ -74,10 +74,48 @@ jobs:
           test-summary-name: 'TestSummary'
 
 
+  sbom-upload:
+    runs-on: ubuntu-latest
+    name: 'Upload SBOM to ServiceNow'
+    needs: [test]
+
+    steps:
+      - name: Upload SBOM to ServiceNow (Dependency Graph)
+        id: upload-sbom
+        uses: ServiceNow/vulnerability-response@v1.0.0
+        with:
+          # ServiceNow instance + creds
+          snSbomUser: ${{ secrets.SN_SBOM_USER }}
+          snSbomPassword: ${{ secrets.SN_SBOM_PASSWORD }}
+          snInstanceUrl: ${{ secrets.SN_INSTANCE_URL }}
+
+          # GitHub token with repo + dependency graph access
+          ghToken: ${{ secrets.GH_TOKEN }}
+
+          # Identify the repo for dependency graph
+          ghAccountOwner: ${{ github.repository_owner }}
+          repository: ${{ github.event.repository.name }}   # e.g. "Finance-API"
+
+          # Use GitHub dependency graph as SBOM source
+          provider: "dependencyGraph"
+          ref: ${{ github.ref_name }}
+
+          # Optional metadata
+          buildId: ${{ needs.build.outputs.dev_version }}
+          lifecycleStage: "pre_production"
+          requestedBy: true
+          fetchVulnerabilityInfo: true
+          fetchPackageInfo: true
+          sbomSource: "github-dependency-graph"
+          maxStatusPollAttempts: "5"
+          statusAttemptInterval: "10000"
+
+
+
   analyze:
     runs-on: ubuntu-latest
     name: 'SonarQube Analysis'
-    needs: test
+    needs: [sbom-upload]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -113,44 +151,6 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           command: qualitygate
-
-
-  sbom-upload:
-    runs-on: ubuntu-latest
-    name: 'Upload SBOM to ServiceNow'
-    needs: [build, test, analyze]
-
-    steps:
-      - name: Upload SBOM to ServiceNow (Dependency Graph)
-        id: upload-sbom
-        uses: ServiceNow/vulnerability-response@v1.0.0
-        with:
-          # ServiceNow instance + creds
-          snSbomUser: ${{ secrets.SN_SBOM_USER }}
-          snSbomPassword: ${{ secrets.SN_SBOM_PASSWORD }}
-          snInstanceUrl: ${{ secrets.SN_INSTANCE_URL }}
-
-          # GitHub token with repo + dependency graph access
-          ghToken: ${{ secrets.GH_TOKEN }}
-
-          # Identify the repo for dependency graph
-          ghAccountOwner: ${{ github.repository_owner }}
-          repository: ${{ github.event.repository.name }}   # e.g. "Finance-API"
-
-          # Use GitHub dependency graph as SBOM source
-          provider: "dependencyGraph"
-          ref: ${{ github.ref_name }}
-
-          # Optional metadata
-          buildId: ${{ needs.build.outputs.dev_version }}
-          lifecycleStage: "pre_production"
-          requestedBy: true
-          fetchVulnerabilityInfo: true
-          fetchPackageInfo: true
-          sbomSource: "github-dependency-graph"
-          maxStatusPollAttempts: "5"
-          statusAttemptInterval: "10000"
-
 
   registerArtifact:
     runs-on: ubuntu-latest
