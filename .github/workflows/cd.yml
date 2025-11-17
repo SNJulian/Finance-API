@@ -151,6 +151,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      # sync package.json version to SEMVER from build job
+      - name: Sync package.json version from SEMVER
+        run: |
+          echo "SEMVER from build: $SEMVER"
+          node -e "
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+          pkg.version = process.env.SEMVER;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "Updated package.json to version $SEMVER"
+        env:
+          SEMVER: ${{ needs.build.outputs.semver }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -284,8 +298,6 @@ jobs:
               "semanticVersion":"${{ env.ARTIFACT_VERSION }}",
               "repositoryName":"${{ github.repository }}"}]
           package-name: "finance-api-${{ env.ARTIFACT_VERSION }}.pkg"
-
-
   changeAndDeploySubProd:
     runs-on: ubuntu-latest
     name: "Create Change & Deployment (Sub-Production)"
@@ -300,12 +312,19 @@ jobs:
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
-          job-name: "Create Change (Sub-Production)"
-          change-request-type: "normal"
-          short-description: "Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Sub-Production"
-          description: "Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Sub-Production"
-          assignment-group: "DevOps"
-          configuration-item: ${{ needs.build.outputs.app_service }}
+          job-name: "Create Change & Deployment (Sub-Production)"
+          change-request: >-
+            {"setCloseCode":"true",
+              "autoCloseChange":true,
+              "attributes":{
+                "short_description":"Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Sub-Production",
+                "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Sub-Production"
+             }}
+          interval: '100'
+          timeout: '3600'
+          changeCreationTimeOut: '3600'
+          abortOnChangeCreationFailure: true
+          abortOnChangeStepTimeout: true
 
       - name: Deployment to Sub-Production
         env:
@@ -327,18 +346,24 @@ jobs:
     steps:
       - name: Create Change in ServiceNow (Production)
         id: create_change_prod
-        uses: ServiceNow/servicenow-devops-change@v6.1.0
+        uses: ServiceNow/servicenow-devops-change@v6.0.0
         with:
           devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
-          job-name: "Create Change (Production)"
-          change-request-type: "normal"
-          short-description: "Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Production"
-          description: "Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Production"
-          assignment-group: "DevOps"
-          configuration-item: ${{ needs.build.outputs.app_service }}
+          job-name: "Create Change & Deployment (Production)"
+          change-request: >-
+            {"setCloseCode":"true","autoCloseChange":true,
+             "attributes":{
+               "short_description":"Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Production",
+               "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Production"
+             }}
+          interval: '100'
+          timeout: '3600'
+          changeCreationTimeOut: '3600'
+          abortOnChangeCreationFailure: true
+          abortOnChangeStepTimeout: true
 
       - name: Deployment to Production
         env:
@@ -350,4 +375,3 @@ jobs:
           echo "Target service: $APP_SERVICE"
           echo "Triggered from branch: $BRANCH"
           echo "Change request created in previous step (see ServiceNow)."
-
