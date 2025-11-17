@@ -51,7 +51,7 @@ jobs:
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
           job-name: 'Test'
-          xml-report-filename: target/surefire-reports/testng-results.xml
+          xml-report-filename: reports/junit/jest-results.xml
           test-summary-name: 'TestSummary'
 
 
