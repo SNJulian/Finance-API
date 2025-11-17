@@ -37,6 +37,9 @@ jobs:
         with:
           # SonarCloud likes full history for PR decoration, coverage, etc.
           fetch-depth: 0
+  
+      - name: Install dependencies
+        run: npm install --save-dev jest-junit
           
       - name: Run unit tests with coverage
         run: npm test -- --coverage
