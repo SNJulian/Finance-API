@@ -151,6 +151,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      # sync package.json version to SEMVER from build job
+      - name: Sync package.json version from SEMVER
+        run: |
+          echo "SEMVER from build: $SEMVER"
+          node -e "
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+          pkg.version = process.env.SEMVER;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "Updated package.json to version $SEMVER"
+        env:
+          SEMVER: ${{ needs.build.outputs.semver }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -284,35 +298,80 @@ jobs:
               "semanticVersion":"${{ env.ARTIFACT_VERSION }}",
               "repositoryName":"${{ github.repository }}"}]
           package-name: "finance-api-${{ env.ARTIFACT_VERSION }}.pkg"
-
-
-  changeAndDeploy:
+  changeAndDeploySubProd:
     runs-on: ubuntu-latest
-    name: "Create Change & Deployment"
-    needs: registerArtifactPackage
+    name: "Create Change & Deployment (Sub-Production)"
+    needs: [registerArtifactPackage, build]
+    if: ${{ needs.build.outputs.lifecycle_stage == 'pre_production' }}
     steps:
-      - name: Create Change in ServiceNow
-        id: create_change
+      - name: Create Change in ServiceNow (Sub-Production)
+        id: create_change_subprod
         uses: ServiceNow/servicenow-devops-change@v6.1.0
         with:
           devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
-          job-name: "Create Change"
-          change-request-type: "normal"
-          short-description: "Deploy Finance API ${{ needs.build.outputs.artifact_version }}"
-          description: "Deployment of Finance API version ${{ needs.build.outputs.artifact_version }}"
-          assignment-group: "DevOps"
-          configuration-item: ${{ needs.build.outputs.app_service }}
+          job-name: "Create Change & Deployment (Sub-Production)"
+          change-request: >-
+            {"setCloseCode":"true",
+              "autoCloseChange":true,
+              "attributes":{
+                "short_description":"Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Sub-Production",
+                "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Sub-Production"
+             }}
+          interval: '100'
+          timeout: '3600'
+          changeCreationTimeOut: '3600'
+          abortOnChangeCreationFailure: true
+          abortOnChangeStepTimeout: true
 
-      - name: Deployment
+      - name: Deployment to Sub-Production
         env:
           ARTIFACT_VERSION: ${{ needs.build.outputs.artifact_version }}
           APP_SERVICE: ${{ needs.build.outputs.app_service }}
           BRANCH: ${{ github.ref_name }}
         run: |
-          echo "Simulating deployment of Finance API version '$ARTIFACT_VERSION'"
+          echo "Simulating deployment of Finance API version '$ARTIFACT_VERSION' to SUB-PRODUCTION"
+          echo "Target service: $APP_SERVICE"
+          echo "Triggered from branch: $BRANCH"
+          echo "Change request created in previous step (see ServiceNow)."
+
+
+  changeAndDeployProd:
+    runs-on: ubuntu-latest
+    name: "Create Change & Deployment (Production)"
+    needs: [registerArtifactPackage, build]
+    if: ${{ needs.build.outputs.lifecycle_stage == 'production' }}
+    steps:
+      - name: Create Change in ServiceNow (Production)
+        id: create_change_prod
+        uses: ServiceNow/servicenow-devops-change@v6.0.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: "Create Change & Deployment (Production)"
+          change-request: >-
+            {"setCloseCode":"true","autoCloseChange":true,
+             "attributes":{
+               "short_description":"Deploy Finance API ${{ needs.build.outputs.artifact_version }} to Production",
+               "description":"Deployment of Finance API version ${{ needs.build.outputs.artifact_version }} to Production"
+             }}
+          interval: '100'
+          timeout: '3600'
+          changeCreationTimeOut: '3600'
+          abortOnChangeCreationFailure: true
+          abortOnChangeStepTimeout: true
+
+      - name: Deployment to Production
+        env:
+          ARTIFACT_VERSION: ${{ needs.build.outputs.artifact_version }}
+          APP_SERVICE: ${{ needs.build.outputs.app_service }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          echo "Simulating deployment of Finance API version '$ARTIFACT_VERSION' to PRODUCTION"
           echo "Target service: $APP_SERVICE"
           echo "Triggered from branch: $BRANCH"
           echo "Change request created in previous step (see ServiceNow)."
