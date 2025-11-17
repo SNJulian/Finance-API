@@ -151,6 +151,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      # sync package.json version to SEMVER from build job
+      - name: Sync package.json version from SEMVER
+        run: |
+          echo "SEMVER from build: $SEMVER"
+          node -e "
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+          pkg.version = process.env.SEMVER;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "Updated package.json to version $SEMVER"
+        env:
+          SEMVER: ${{ needs.build.outputs.semver }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
