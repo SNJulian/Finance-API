@@ -77,47 +77,47 @@ jobs:
     name: 'Upload SBOM to ServiceNow via REST API'
     needs: [build, test]
 
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
-        cache: npm
-
-    - name: Install dependencies
-      run: npm install
-
-    - name: Generate SBOM (CycloneDX)
-      run: |
-        npm install -g @cyclonedx/cyclonedx-npm
-        mkdir -p sbom
-        cyclonedx-npm --output-file sbom/sbom.json --output-format json
-
-    - name: Upload SBOM to ServiceNow via REST
-      env:
-        SN_INSTANCE_URL: ${{ secrets.SN_INSTANCE_URL }}
-        SN_SBOM_USER: ${{ secrets.SN_SBOM_USER }}
-        SN_SBOM_PASSWORD: ${{ secrets.SN_SBOM_PASSWORD }}
-        DEV_VERSION: ${{ needs.build.outputs.dev_version }}
-      run: |
-        echo "Uploading SBOM to ServiceNow..."
-        if [ ! -f sbom/sbom.json ]; then
-          echo "SBOM file sbom/sbom.json not found"
-          exit 1
-        fi
-
-        # TODO: replace endpoint with your actual SBOM API URL
-        curl -v \
-          -u "$SN_SBOM_USER:$SN_SBOM_PASSWORD" \
-          -H "Content-Type: application/json" \
-          -X POST \
-          "$SN_INSTANCE_URL/api/now/sn_sbom/sbom/upload?lifecycle_stage=pre_production&build_id=$DEV_VERSION&source=github-actions-ci" \
-          --data-binary "@sbom/sbom.json"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+  
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+  
+      - name: Install dependencies
+        run: npm install
+  
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          npm install -g @cyclonedx/cyclonedx-npm
+          mkdir -p sbom
+          cyclonedx-npm --output-file sbom/sbom.json --output-format json
+  
+      - name: Upload SBOM to ServiceNow via REST
+        env:
+          SN_INSTANCE_URL: ${{ secrets.SN_INSTANCE_URL }}
+          SN_SBOM_USER: ${{ secrets.SN_SBOM_USER }}
+          SN_SBOM_PASSWORD: ${{ secrets.SN_SBOM_PASSWORD }}
+          DEV_VERSION: ${{ needs.build.outputs.dev_version }}
+        run: |
+          echo "Uploading SBOM to ServiceNow..."
+          if [ ! -f sbom/sbom.json ]; then
+            echo "SBOM file sbom/sbom.json not found"
+            exit 1
+          fi
+  
+          # TODO: replace endpoint with your actual SBOM API URL
+          curl -v \
+            -u "$SN_SBOM_USER:$SN_SBOM_PASSWORD" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            "$SN_INSTANCE_URL/api/now/sn_sbom/sbom/upload?lifecycle_stage=pre_production&build_id=$DEV_VERSION&source=github-actions-ci" \
+            --data-binary "@sbom/sbom.json"
 
   analyze:
     runs-on: ubuntu-latest
