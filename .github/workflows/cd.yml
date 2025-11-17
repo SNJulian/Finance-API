@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # 🔹 NEW: Sync package.json version with release branch name (release/*)
+      # Sync package.json version with release branch name (release/*)
       - name: Sync package.json version with branch (release/*)
         id: sync_version
         run: |
@@ -77,14 +77,8 @@ jobs:
 
           echo "version_updated=$UPDATED" >> $GITHUB_OUTPUT
 
-          if [ "$UPDATED" = true ]; then
-            echo "Version was updated and pushed. Stopping current workflow run; a new run will be triggered by the commit."
-            exit 0
-          fi
-
       - name: Extract version (RC for release/*, final for main)
         id: version
-        if: steps.sync_version.outputs.version_updated == 'false'
         run: |
           SEMVER=$(node -p "require('./package.json').version")
           BUILD=${GITHUB_RUN_NUMBER}
@@ -121,7 +115,6 @@ jobs:
     runs-on: ubuntu-latest
     name: "Test"
     needs: build
-    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -152,7 +145,6 @@ jobs:
     runs-on: ubuntu-latest
     name: "Upload SBOM to ServiceNow via REST"
     needs: [build, test]
-    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -221,7 +213,6 @@ jobs:
     runs-on: ubuntu-latest
     name: "SonarQube Analysis"
     needs: [build, sbom]
-    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -260,7 +251,6 @@ jobs:
     runs-on: ubuntu-latest
     name: "Register Artifact and Package"
     needs: [build, analyze]
-    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: ServiceNow DevOps Register Artifact
         uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
@@ -300,7 +290,6 @@ jobs:
     runs-on: ubuntu-latest
     name: "Create Change & Deployment"
     needs: registerArtifactPackage
-    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: Create Change in ServiceNow
         id: create_change
