@@ -131,4 +131,7 @@ jobs:
           # Github Context
           context-github: ${{ toJSON(github) }}
           # List of Artifacts to be registered
-          artifacts: '[{"name": "com:finance-api","version": "${{ steps.version.outputs.dev_version }}","semanticVersion": "${{ steps.version.outputs.semver }}","repositoryName": "${{ github.repository }}"}]'
+          artifacts: '[{"name": "com:finance-api","version": "$DEV_VERSION","semanticVersion": "$DEV_VERSION","repositoryName": "${{ github.repository }}"}]'
+      env:
+          SEMVER: ${{ needs.build.outputs.semver }}
+          DEV_VERSION: ${{ needs.build.outputs.dev_version }}
