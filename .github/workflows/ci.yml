@@ -124,7 +124,7 @@ jobs:
   sbom-upload:
     runs-on: ubuntu-latest
     name: 'Upload SBOM to ServiceNow'
-    needs: [build, test, analyze]   # ensure SBOM + analysis are done first
+    needs: [build, test, analyze]
 
     steps:
       - name: Checkout
@@ -134,27 +134,29 @@ jobs:
         id: upload-sbom
         uses: ServiceNow/vulnerability-response@v1.0.0
         with:
-          # ServiceNow instance + credentials
+          # ServiceNow instance + creds
           snSbomUser: ${{ secrets.SN_SBOM_USER }}
           snSbomPassword: ${{ secrets.SN_SBOM_PASSWORD }}
           snInstanceUrl: ${{ secrets.SN_INSTANCE_URL }}
 
-          # GitHub access (PAT with "repo" scope)
+          # GitHub token with repo scope
           ghToken: ${{ secrets.GH_TOKEN }}
 
-          # Where to find the SBOM in GitHub
+          # Where the SBOM lives in the repo
           ghAccountOwner: ${{ github.repository_owner }}
           repository: ${{ github.repository }}
-          provider: 'repository'
-          path: 'sbom/sbom.json'       # <-- path to your SBOM file in the repo
+          provider: "repository"
+          path: "sbom/sbom.json"           # adjust if your SBOM path is different
 
-          # Optional metadata – nice for demos
+          # Optional API parameters / metadata
           buildId: ${{ needs.build.outputs.dev_version }}
-          lifecycleStage: 'pre_production'
+          lifecycleStage: "pre_production"
           requestedBy: true
-          sbomSource: 'github-actions-ci'
           fetchVulnerabilityInfo: true
           fetchPackageInfo: true
+          sbomSource: "github-actions-ci"
+          maxStatusPollAttempts: "5"
+          statusAttemptInterval: "10000"   # must be >= 5000 ms
 
           
   registerArtifact:
