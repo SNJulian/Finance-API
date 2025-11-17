@@ -1,6 +1,6 @@
 {
-  "name": "finance-demo-api",
-  "version": "1.0.0",
+  "name": "finance-api",
+  "version": "0.3.0",
   "description": "Sample Finance API for demonstrating GitHub CI/CD, SonarCloud analysis, and SBOM generation.",
   "main": "src/app.js",
   "scripts": {
@@ -18,7 +18,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.21.0"
+    "express": "^5.1.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",

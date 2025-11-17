@@ -2,15 +2,102 @@ name: CD
 
 on:
   push:
-    branches: [ "main" ]
-
-permissions:
-  contents: read
-  packages: write
+    branches:
+      - "main"
+      - "release/*"
 
 jobs:
-  analyze-build-and-push:
+  build:
     runs-on: ubuntu-latest
+    name: "Build & Version"
+    outputs:
+      semver: ${{ steps.version.outputs.semver }}
+      artifact_version: ${{ steps.version.outputs.artifact_version }}
+      lifecycle_stage: ${{ steps.version.outputs.lifecycle_stage }}
+      app_service: ${{ steps.version.outputs.app_service }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Extract version (RC for release/*, final for main)
+        id: version
+        run: |
+          SEMVER=$(node -p "require('./package.json').version")
+          BUILD=${GITHUB_RUN_NUMBER}
+          BRANCH="${GITHUB_REF_NAME}"
+
+          echo "Detected branch: $BRANCH"
+          echo "Semantic version from package.json: $SEMVER"
+
+          # Defaults for main (production)
+          ARTIFACT_VERSION="$SEMVER"
+          LIFECYCLE_STAGE="production"
+          APP_SERVICE="Finance API - Prod"
+
+          # For release branches: release/v0.9.0 -> 0.9.0-rc.<build>
+          if [[ "$BRANCH" == release/* ]]; then
+            BASE="${BRANCH#release/}"  # strip 'release/'
+            BASE="${BASE#v}"           # strip leading 'v' if present
+            ARTIFACT_VERSION="${BASE}-rc.${BUILD}"
+            LIFECYCLE_STAGE="pre_production"
+            APP_SERVICE="Finance API - NonProd"
+          fi
+
+          echo "artifact_version=${ARTIFACT_VERSION}" >> $GITHUB_OUTPUT
+          echo "semver=${SEMVER}" >> $GITHUB_OUTPUT
+          echo "lifecycle_stage=${LIFECYCLE_STAGE}" >> $GITHUB_OUTPUT
+          echo "app_service=${APP_SERVICE}" >> $GITHUB_OUTPUT
+
+          echo "Final artifact version: $ARTIFACT_VERSION"
+          echo "Lifecycle stage: $LIFECYCLE_STAGE"
+          echo "Application service: $APP_SERVICE"
+
+
+  test:
+    runs-on: ubuntu-latest
+    name: "Test"
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run unit tests with coverage
+        run: npm test -- --coverage
+        env:
+          NODE_ENV: test
+
+      - name: ServiceNow DevOps Unit Test Results
+        uses: ServiceNow/servicenow-devops-test-report@v6.0.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: "Test"
+          xml-report-filename: reports/junit/jest-results.xml
+          test-summary-name: "TestSummary"
+
+
+  sbom:
+    runs-on: ubuntu-latest
+    name: "Upload SBOM to ServiceNow via REST"
+    needs: [build, test]
 
     steps:
       - name: Checkout
@@ -27,10 +114,64 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run unit tests with coverage
-        run: npm test -- --coverage
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          npm install -g @cyclonedx/cyclonedx-npm
+          mkdir -p sbom
+          cyclonedx-npm --output-file sbom/sbom.json --output-format json
+
+      - name: Upload SBOM to ServiceNow via REST
         env:
-          NODE_ENV: test
+          SN_INSTANCE_URL: ${{ secrets.SN_INSTANCE_URL }}
+          SN_SBOM_USER: ${{ secrets.SN_SBOM_USER }}
+          SN_SBOM_PASSWORD: ${{ secrets.SN_SBOM_PASSWORD }}
+          ARTIFACT_VERSION: ${{ needs.build.outputs.artifact_version }}
+          LIFECYCLE_STAGE: ${{ needs.build.outputs.lifecycle_stage }}
+        run: |
+          echo "Uploading SBOM to ServiceNow..."
+          if [ ! -f sbom/sbom.json ]; then
+            echo "SBOM file sbom/sbom.json not found"
+            exit 1
+          fi
+
+          URL="${SN_INSTANCE_URL%/}/api/sbom/core/upload"
+          URL="${URL}?businessApplicationId=39c42f0483553a10b63977cfeeaad365"
+          URL="${URL}&buildId=${ARTIFACT_VERSION}"
+          URL="${URL}&requestedBy=devops"
+          URL="${URL}&lifecycleStage=${LIFECYCLE_STAGE}"
+          URL="${URL}&fetchVulnerabilityInfo=true"
+          URL="${URL}&fetchPackageInfo=true"
+
+          echo "Calling SBOM API: $URL"
+
+          HTTP_CODE=$(curl -s -o sbom/response.json -w "%{http_code}" \
+            -u "$SN_SBOM_USER:$SN_SBOM_PASSWORD" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            "$URL" \
+            --data-binary "@sbom/sbom.json")
+
+          echo "SBOM upload HTTP status: $HTTP_CODE"
+          echo "SBOM upload response body:"
+          cat sbom/response.json || true
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "ERROR: SBOM upload failed or was not queued successfully (HTTP $HTTP_CODE). Aborting pipeline."
+            exit 1
+          fi
+
+          echo "SBOM upload successfully queued for processing."
+
+
+  analyze:
+    runs-on: ubuntu-latest
+    name: "SonarQube Analysis"
+    needs: [build, sbom]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
@@ -41,18 +182,97 @@ jobs:
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ secrets.SONAR_ORG }}
 
-      # build & push only if analysis succeeded
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - name: ServiceNow DevOps Sonar Scan Results
+        uses: ServiceNow/servicenow-devops-sonar@v5.1.0
         with:
-            registry: ghcr.io
-            username: ${{ github.actor }}
-            password: ${{ secrets.GITHUB_TOKEN }}
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: "SonarQube Analysis"
+          sonar-host-url: ${{ secrets.SONAR_URL }}
+          sonar-project-key: ${{ secrets.SONAR_PROJECT_KEY }}
 
-      - name: Build image
-        run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/finance-demo-api:latest .
+      - name: SonarCloud Quality Gate
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          command: qualitygate
 
-      - name: Push image
+
+  registerArtifact:
+    runs-on: ubuntu-latest
+    name: "Register Artifact"
+    needs: [build, analyze]
+    steps:
+      - name: ServiceNow DevOps Register Artifact
+        uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
+        env:
+          ARTIFACT_VERSION: ${{ needs.build.outputs.artifact_version }}
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          job-name: "Register Artifact"
+          context-github: ${{ toJSON(github) }}
+          artifacts: >-
+            [{"name":"com:finance-api",
+              "version":"${{ env.ARTIFACT_VERSION }}",
+              "semanticVersion":"${{ env.ARTIFACT_VERSION }}",
+              "repositoryName":"${{ github.repository }}"}]
+
+
+  registerPackage:
+    runs-on: ubuntu-latest
+    name: "Register Package"
+    needs: registerArtifact
+    steps:
+      - name: ServiceNow DevOps Register Package
+        uses: ServiceNow/servicenow-devops-register-package@v5.1.0
+        env:
+          ARTIFACT_VERSION: ${{ needs.registerArtifact.outputs.artifact_version }}
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: "Register Package"
+          artifacts: >-
+            [{"name":"com:finance-api",
+              "version":"${{ needs.build.outputs.artifact_version }}",
+              "semanticVersion":"${{ needs.build.outputs.artifact_version }}",
+              "repositoryName":"${{ github.repository }}"}]
+          package-name: "finance-api-${{ needs.build.outputs.artifact_version }}.pkg"
+
+
+  changeAndDeploy:
+    runs-on: ubuntu-latest
+    name: "Create Change & Deployment"
+    needs: registerPackage
+    steps:
+      - name: Create Change in ServiceNow
+        id: create_change
+        uses: ServiceNow/servicenow-devops-change@v4.1.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: "Create Change"
+          change-request-type: "normal"
+          short-description: "Deploy Finance API ${{ needs.build.outputs.artifact_version }}"
+          description: "Deployment of Finance API version ${{ needs.build.outputs.artifact_version }}"
+          assignment-group: "DevOps"
+          configuration-item: ${{ needs.build.outputs.app_service }}
+
+      - name: Simulate Deployment
+        env:
+          ARTIFACT_VERSION: ${{ needs.build.outputs.artifact_version }}
+          APP_SERVICE: ${{ needs.build.outputs.app_service }}
+          BRANCH: ${{ github.ref_name }}
         run: |
-          docker push ghcr.io/${{ github.repository_owner }}/finance-demo-api:latest
+          echo "Simulating deployment of Finance API version '$ARTIFACT_VERSION'"
+          echo "Target service: $APP_SERVICE"
+          echo "Triggered from branch: $BRANCH"
+          echo "Change request created in previous step (see ServiceNow)."
