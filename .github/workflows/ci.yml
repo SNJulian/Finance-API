@@ -117,7 +117,7 @@ jobs:
   registerArtifact:
     runs-on: ubuntu-latest
     name: 'Register Artifact'
-    needs: analyze, build
+    needs: [build, analyze]
     steps:   
     - name: ServiceNow DevOps Register Artifact
     # You may pin to the exact commit or the version.          
