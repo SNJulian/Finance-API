@@ -22,4 +22,19 @@
     "jest": "^29.7.0",
     "supertest": "^7.1.4"
   }
+  "jest": {
+  "reporters": [
+    "default",
+    [
+      "jest-junit",
+      {
+        "outputDirectory": "reports/junit",
+        "outputName": "jest-results.xml",
+        "classNameTemplate": "{classname}",
+        "titleTemplate": "{title}",
+        "ancestorSeparator": " › "
+      }
+    ]
+  ]
+ }
 }
