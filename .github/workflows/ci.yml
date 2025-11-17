@@ -42,6 +42,13 @@ jobs:
           echo "Semantic Version: $SEMVER"
           echo "Dev Version: $DEV_VERSION"
 
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          npm install -g @cyclonedx/cyclonedx-npm
+          mkdir -p sbom
+          cyclonedx-npm --output-file sbom/sbom.json --output-format json
+
+
 
   test:
     runs-on: ubuntu-latest
@@ -113,6 +120,42 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           command: qualitygate
+
+  sbom-upload:
+    runs-on: ubuntu-latest
+    name: 'Upload SBOM to ServiceNow'
+    needs: [build, test, analyze]   # ensure SBOM + analysis are done first
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload SBOM to ServiceNow
+        id: upload-sbom
+        uses: ServiceNow/vulnerability-response@v2.0.1
+        with:
+          # ServiceNow instance + credentials
+          snSbomUser: ${{ secrets.SN_SBOM_USER }}
+          snSbomPassword: ${{ secrets.SN_SBOM_PASSWORD }}
+          snInstanceUrl: ${{ secrets.SN_INSTANCE_URL }}
+
+          # GitHub access (PAT with "repo" scope)
+          ghToken: ${{ secrets.GH_TOKEN }}
+
+          # Where to find the SBOM in GitHub
+          ghAccountOwner: ${{ github.repository_owner }}
+          repository: ${{ github.repository }}
+          provider: 'repository'
+          path: 'sbom/sbom.json'       # <-- path to your SBOM file in the repo
+
+          # Optional metadata – nice for demos
+          buildId: ${{ needs.build.outputs.dev_version }}
+          lifecycleStage: 'pre_production'
+          requestedBy: true
+          sbomSource: 'github-actions-ci'
+          fetchVulnerabilityInfo: true
+          fetchPackageInfo: true
+
           
   registerArtifact:
     runs-on: ubuntu-latest
