@@ -298,9 +298,10 @@ jobs:
               "semanticVersion":"${{ env.ARTIFACT_VERSION }}",
               "repositoryName":"${{ github.repository }}"}]
           package-name: "finance-api-${{ env.ARTIFACT_VERSION }}.pkg"
+          
   changeAndDeploySubProd:
     runs-on: ubuntu-latest
-    name: "Create Change & Deployment (Sub-Production)"
+    name: "Create Change Deployment (Sub-Production)"
     needs: [registerArtifactPackage, build]
     if: ${{ needs.build.outputs.lifecycle_stage == 'pre_production' }}
     steps:
@@ -312,7 +313,7 @@ jobs:
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
-          job-name: "Create Change & Deployment (Sub-Production)"
+          job-name: "Create Change Deployment (Sub-Production)"
           change-request: >-
             {"setCloseCode":"true",
               "autoCloseChange":true,
@@ -340,7 +341,7 @@ jobs:
 
   changeAndDeployProd:
     runs-on: ubuntu-latest
-    name: "Create Change & Deployment (Production)"
+    name: "Create Change Deployment (Production)"
     needs: [registerArtifactPackage, build]
     if: ${{ needs.build.outputs.lifecycle_stage == 'production' }}
     steps:
@@ -352,7 +353,7 @@ jobs:
           instance-url: ${{ secrets.SN_INSTANCE_URL }}
           tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
           context-github: ${{ toJSON(github) }}
-          job-name: "Create Change & Deployment (Production)"
+          job-name: "Create Change Deployment (Production)"
           change-request: >-
             {"setCloseCode":"true","autoCloseChange":true,
              "attributes":{
