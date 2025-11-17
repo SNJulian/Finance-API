@@ -6,6 +6,9 @@ on:
       - "main"
       - "release/*"
 
+permissions:
+  contents: write   # needed to push updated package.json
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,6 +18,7 @@ jobs:
       artifact_version: ${{ steps.version.outputs.artifact_version }}
       lifecycle_stage: ${{ steps.version.outputs.lifecycle_stage }}
       app_service: ${{ steps.version.outputs.app_service }}
+      version_updated: ${{ steps.sync_version.outputs.version_updated }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,8 +34,57 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # 🔹 NEW: Sync package.json version with release branch name (release/*)
+      - name: Sync package.json version with branch (release/*)
+        id: sync_version
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          UPDATED=false
+
+          # Only enforce sync for release branches
+          if [[ "$BRANCH" == release/* ]]; then
+            SEMVER_PKG=$(node -p "require('./package.json').version")
+            BASE="${BRANCH#release/}"  # strip 'release/'
+            BASE="${BASE#v}"           # strip leading 'v' if present
+
+            echo "Release branch detected: $BRANCH"
+            echo "package.json version: $SEMVER_PKG"
+            echo "Branch base version:  $BASE"
+
+            if [ "$SEMVER_PKG" != "$BASE" ]; then
+              echo "Version mismatch – updating package.json to $BASE and pushing to $BRANCH..."
+
+              node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.version = '$BASE';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+              "
+
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add package.json
+              git commit -m "chore: sync version to $BASE from branch $BRANCH"
+              git push origin HEAD:$BRANCH
+
+              UPDATED=true
+            else
+              echo "Version already matches branch. No update needed."
+            fi
+          else
+            echo "Not a release/* branch. No version sync required."
+          fi
+
+          echo "version_updated=$UPDATED" >> $GITHUB_OUTPUT
+
+          if [ "$UPDATED" = true ]; then
+            echo "Version was updated and pushed. Stopping current workflow run; a new run will be triggered by the commit."
+            exit 0
+          fi
+
       - name: Extract version (RC for release/*, final for main)
         id: version
+        if: steps.sync_version.outputs.version_updated == 'false'
         run: |
           SEMVER=$(node -p "require('./package.json').version")
           BUILD=${GITHUB_RUN_NUMBER}
@@ -68,6 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     name: "Test"
     needs: build
+    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -98,7 +152,7 @@ jobs:
     runs-on: ubuntu-latest
     name: "Upload SBOM to ServiceNow via REST"
     needs: [build, test]
-
+    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -167,6 +221,7 @@ jobs:
     runs-on: ubuntu-latest
     name: "SonarQube Analysis"
     needs: [build, sbom]
+    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -205,6 +260,7 @@ jobs:
     runs-on: ubuntu-latest
     name: "Register Artifact and Package"
     needs: [build, analyze]
+    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: ServiceNow DevOps Register Artifact
         uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
@@ -244,6 +300,7 @@ jobs:
     runs-on: ubuntu-latest
     name: "Create Change & Deployment"
     needs: registerArtifactPackage
+    if: needs.build.outputs.version_updated != 'true'
     steps:
       - name: Create Change in ServiceNow
         id: create_change
