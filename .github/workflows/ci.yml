@@ -3,14 +3,14 @@ name: CI
 on:
   push:
     branches: [ "main", "develop" ]
-  pull_request:
-    branches: [ "main", "develop" ]
+#  pull_request:
+#    branches: [ "main", "develop" ]
 
 jobs:
-  build-test-analyze:
+  build:
     runs-on: ubuntu-latest
-
-    steps:
+    name: 'NPM Build'
+    steps:   
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -26,11 +26,49 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+
+  test:
+    runs-on: ubuntu-latest
+    name: 'Test'
+    needs: build
+    steps:   
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # SonarCloud likes full history for PR decoration, coverage, etc.
+          fetch-depth: 0
+  
+      - name: Install dependencies
+        run: npm install --save-dev jest-junit
+          
       - name: Run unit tests with coverage
         run: npm test -- --coverage
         env:
           NODE_ENV: test
 
+      - name: ServiceNow DevOps Unit Test Results
+        uses: ServiceNow/servicenow-devops-test-report@v6.0.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: 'Test'
+          xml-report-filename: reports/junit/jest-results.xml
+          test-summary-name: 'TestSummary'
+
+
+  analyze:
+    runs-on: ubuntu-latest
+    name: 'SonarQube Analysis'
+    needs: test
+    steps:   
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # SonarCloud likes full history for PR decoration, coverage, etc.
+          fetch-depth: 0
+          
       # SonarCloud analysis
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
@@ -40,6 +78,17 @@ jobs:
           args: >
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ secrets.SONAR_ORG }}
+      
+      - name: ServiceNow DevOps Sonar Scan Results
+        uses: ServiceNow/servicenow-devops-sonar@v5.1.0
+        with:
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN}}
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          context-github: ${{ toJSON(github) }}
+          job-name: 'SonarQube Analysis'
+          sonar-host-url: ${{ secrets.SONAR_URL }}
+          sonar-project-key: ${{ secrets.SONAR_PROJECT_KEY }}
 
       # (optional) fail the build if Quality Gate fails
       - name: SonarCloud Quality Gate
@@ -48,3 +97,25 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           command: qualitygate
+          
+  registerArtifact:
+    runs-on: ubuntu-latest
+    name: 'Register Artifact'
+    needs: analyze
+    steps:   
+    - name: ServiceNow DevOps Register Artifact
+    # You may pin to the exact commit or the version.          
+      uses: ServiceNow/servicenow-devops-register-artifact@v5.1.0
+      with:
+          # Devops Integration Token
+          devops-integration-token: ${{ secrets.SN_DEVOPS_INTEGRATION_TOKEN }}
+          # ServiceNow Instance URL
+          instance-url: ${{ secrets.SN_INSTANCE_URL }}
+          # Orchestration Tool Id
+          tool-id: ${{ secrets.SN_ORCHESTRATION_TOOL_ID }}
+          # Display Name of the Job
+          job-name: 'Register Artifact'
+          # Github Context
+          context-github: ${{ toJSON(github) }}
+          # List of Artifacts to be registered
+          artifacts: '[{"name": "com:finance-api","version": "1.${{ github.run_number }}","semanticVersion": "1.${{ github.run_number }}.0","repositoryName": "${{ github.repository }}"}]'

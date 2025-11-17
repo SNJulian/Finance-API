@@ -1,7 +1,7 @@
 {
-  "name": "finance-api",
+  "name": "finance-demo-api",
   "version": "1.0.0",
-  "description": "Sample Finance API for demonstrating GitHub CI/CD with SonarQube and automated testing",
+  "description": "Sample Finance API for demonstrating GitHub CI/CD, SonarCloud analysis, and SBOM generation.",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
@@ -12,14 +12,33 @@
     "api",
     "express",
     "ci-cd",
-    "sonarqube",
+    "sonarcloud",
     "demo"
   ],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0"
+  },
   "devDependencies": {
-    "express": "^5.1.0",
     "jest": "^29.7.0",
-    "supertest": "^7.1.4"
+    "supertest": "^7.1.1",
+    "jest-junit": "^16.0.0"
+  },
+  "jest": {
+    "reporters": [
+      "default",
+      [
+        "jest-junit",
+        {
+          "outputDirectory": "reports/junit",
+          "outputName": "jest-results.xml",
+          "classNameTemplate": "{classname}",
+          "titleTemplate": "{title}",
+          "ancestorSeparator": " › "
+        }
+      ]
+    ],
+    "testEnvironment": "node"
   }
 }
