@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="10" failures="0" errors="0" time="0.816">
+  <testsuite name="Finance API base" errors="0" failures="0" skipped="0" timestamp="2025-11-19T16:35:46" time="0.646" tests="1">
+    <testcase classname="Finance API base" name="GET / should list endpoints" time="0.023">
+    </testcase>
+  </testsuite>
+  <testsuite name="Quotes API" errors="0" failures="0" skipped="0" timestamp="2025-11-19T16:35:46" time="0.644" tests="1">
+    <testcase classname="Quotes API" name="GET /quotes?symbol=AAPL should return quote" time="0.018">
+    </testcase>
+  </testsuite>
+  <testsuite name="Portfolio API" errors="0" failures="0" skipped="0" timestamp="2025-11-19T16:35:46" time="0.648" tests="1">
+    <testcase classname="Portfolio API" name="GET /portfolio should return portfolio" time="0.023">
+    </testcase>
+  </testsuite>
+  <testsuite name="Accounts API" errors="0" failures="0" skipped="0" timestamp="2025-11-19T16:35:46" time="0.661" tests="2">
+    <testcase classname="Accounts API" name="should list accounts" time="0.017">
+    </testcase>
+    <testcase classname="Accounts API" name="should create a transaction" time="0.02">
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /analytics/correlation" errors="0" failures="0" skipped="0" timestamp="2025-11-19T16:35:46" time="0.669" tests="5">
+    <testcase classname="POST /analytics/correlation" name="returns correlation for valid numeric arrays" time="0.04">
+    </testcase>
+    <testcase classname="POST /analytics/correlation" name="returns 400 if x or y is not an array" time="0.002">
+    </testcase>
+    <testcase classname="POST /analytics/correlation" name="returns 400 if x and y have different lengths" time="0.001">
+    </testcase>
+    <testcase classname="POST /analytics/correlation" name="returns 400 if arrays are too short" time="0.001">
+    </testcase>
+    <testcase classname="POST /analytics/correlation" name="returns 400 if arrays contain non-numeric values" time="0.001">
+    </testcase>
+  </testsuite>
+</testsuites>

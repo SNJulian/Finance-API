@@ -46,3 +46,7 @@ if (process.env.NODE_ENV !== "test") {
 }
 
 module.exports = app;
+
+// --- Analytics routes ---
+const analyticsRouter = require('./routes/analytics');
+app.use('/analytics', analyticsRouter);
