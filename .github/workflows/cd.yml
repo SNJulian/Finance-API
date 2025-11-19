@@ -301,7 +301,7 @@ jobs:
           
   changeAndDeploySubProd:
     runs-on: ubuntu-latest
-    name: "Create Change & Deployment (Sub-Production)"
+    name: "Create Change Deployment (Sub-Production)"
     needs: [registerArtifactPackage, build]
     if: ${{ needs.build.outputs.lifecycle_stage == 'pre_production' }}
     steps:
@@ -342,7 +342,7 @@ jobs:
 
   changeAndDeployProd:
     runs-on: ubuntu-latest
-    name: "Create Change & Deployment (Production)"
+    name: "Create Change Deployment (Production)"
     needs: [registerArtifactPackage, build]
     if: ${{ needs.build.outputs.lifecycle_stage == 'production' }}
     steps:
