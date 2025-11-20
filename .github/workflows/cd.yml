@@ -327,7 +327,13 @@ jobs:
           changeCreationTimeOut: '3600'
           abortOnChangeCreationFailure: true
           abortOnChangeStepTimeout: true
-
+          
+  simulateSubProdDeployment:
+    runs-on: ubuntu-latest
+    name: "Deployment to Sub-Production"
+    needs: [changeAndDeploySubProd, build]
+    if: ${{ needs.build.outputs.lifecycle_stage == 'pre_production' }}
+    steps:
       - name: Deployment to Sub-Production
         env:
           ARTIFACT_VERSION: ${{ needs.build.outputs.artifact_version }}
@@ -368,6 +374,12 @@ jobs:
           abortOnChangeCreationFailure: true
           abortOnChangeStepTimeout: true
 
+  simulateProdDeployment:
+    runs-on: ubuntu-latest
+    name: "Deployment to Production"
+    needs: [changeAndDeployProd, build]
+    if: ${{ needs.build.outputs.lifecycle_stage == 'production' }}
+    steps:
       - name: Deployment to Production
         env:
           ARTIFACT_VERSION: ${{ needs.build.outputs.artifact_version }}
