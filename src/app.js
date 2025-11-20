@@ -4,12 +4,15 @@ const portfolioRouter = require("./routes/portfolio");
 const quotesRouter = require("./routes/quotes");
 const bodyParser = require('body-parser');
 const budgetRoutes = require('./routes/budgetRoutes');
+const metricsRouter = require('./routes/metrics');
+
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(bodyParser.json());
+app.use('/metrics', metricsRouter);
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok", service: "finance-api", at: new Date().toISOString() });
