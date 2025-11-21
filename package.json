@@ -1,6 +1,6 @@
 {
   "name": "Finance-API",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Sample Finance API for demonstrating GitHub CI/CD, SonarCloud analysis, and SBOM generation.",
   "main": "src/app.js",
   "scripts": {
@@ -21,7 +21,7 @@
     "express": "^5.1.0",
     "simple-statistics": "^7.8.8",
     "left-pad": "1.1.3",
-    "lodash": "4.17.20"
+    "lodash": "4.17.21"
   },
   "devDependencies": {
     "jest": "^29.7.0",
