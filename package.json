@@ -41,7 +41,7 @@
           "ancestorSeparator": " › "
         }
       ]
-    ],
+    ], 
     "testEnvironment": "node"
   }
 }
