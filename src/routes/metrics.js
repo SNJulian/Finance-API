@@ -71,11 +71,17 @@ router.post('/portfolio', (req, res) => {
   const limitedPositions = aggregated.slice(0, limit);
   const totalMarketValue = _.sumBy(aggregated, 'marketValue');
 
+  // New helper info for clients
+  const hasNegativePositions = aggregated.some((p) => p.quantity < 0);
+  const positionCount = limitedPositions.length;
+
   return res.status(200).json({
     success: true,
     data: {
       totalMarketValue,
-      positions: limitedPositions
+      positions: limitedPositions,
+      positionCount,
+      hasNegativePositions
     }
   });
 });
